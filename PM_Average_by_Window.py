@@ -1,10 +1,8 @@
-# global imports
 import pandas as pd
 import csv
 
-
 class Averager:
-  # list of stations
+  # list of stations (not all supply PM2.5)
   station_list = ['Havre', 'Dillon', 'Cut Bank', 'Flathead Valley', 'Libby',
                   'Thompson Falls', 'Great Falls', 'Helena', 'Broadus', 'NCore',
                   'Sleeping Giant', 'Hamilton', 'Malta', 'Sidney', 'Bozeman',
@@ -61,13 +59,6 @@ class Averager:
 
     # filter by distinct dates and each station
     for date in self.unique_dates:
-
-      # get hour time converter using helper function        
-      year = date.split('-')[0]
-      month = date.split('-')[1]
-      day = date.split('-')[2]
-      isDST = Averager.is_ds(year, month, day)
-
       for place in self.station_list:
         sample = df[(df['date'] == date) & (df['sitename'] == place)]
 
@@ -75,34 +66,30 @@ class Averager:
         if len(sample.index) == 0:
           continue
 
-        pm_sum_one = 0.0  # initialize pm sums and counts
+        # initialize pm sums and counts
+        pm_sum_one = 0.0  
         pm_sum_two = 0.0
         count_one = 0
         count_two = 0
 
-        for index, row in sample.iterrows():
+        for row in sample.iterrows():
           # raw value in this row
           pm = float(row['rawvalue'])
           hour = int(row['hour'])
 
-          pm_sum_one += pm
-          count_one += 1
-
-          if isDST and hour in [12, 13]:
+          # ignore negative (invalid) values
+          if pm < 0:
+            continue
+          
+          # hour in MST
+          if hour in [11, 12]:
             pm_sum_one += pm
             count_one += 1
-          elif not isDST and hour in [11, 12]:
-            pm_sum_one += pm
-            count_one += 1
-
-          if isDST and hour in [14, 15]:
+          elif hour in [13, 14]:
             pm_sum_two += pm
             count_two += 1
-          elif not isDST and hour in [13, 14]:
-            pm_sum_two += pm
-            count_two += 1
-
-        # calculate averages (can be null if only valid reading isn't proper time.)
+        
+        # calculate averages (can be null if only valid reading is from other time window)
         if count_one == 0:
           pm_ave_one = None
         else:
@@ -127,49 +114,19 @@ class Averager:
           sites.append(sample['sitename'].iloc[0])
           datetimes.append(sample['date'].iloc[0] + 'T20:00')
 
-    data2 = {
+    output_data = pd.DataFrame({
       'datetime': datetimes,
       'sitename': sites,
       'latitude': lat,
       'longitude': long,
       'rawvalue': rawvalues
-    }
-
-    df2 = pd.DataFrame(data2)
+    })
 
     # export to csv
-    return df2.to_csv('PM_TAW_AY_2b.csv', sep=',', index=True)
-
-  def is_ds(year, month, day): 
-    # daylight saving dictionary
-    daylight_savings = {
-        '2012': '11',
-        '2013': '10',
-        '2014': '9',
-        '2015': '8',
-        '2016': '13',
-        '2017': '12',
-        '2018': '11',
-        '2019': '10',
-        '2020': '8',        
-        '2021': '14',
-        '2022': '13',
-        '2023': '12'}
-    
-    month = int(month)    
-    day = int(day)
-    start = int(daylight_savings[year])
-
-    if month in range(4, 11):
-      return True
-    elif month == 3 and day >= start:
-      return True
-    elif month == 11 and day < (start - 7):
-      return True
-    else:
-      return False
+    return output_data.to_csv('PM_TAW_AY_2b.csv', sep=',', index=True)
 
 def main():
+    # might be broken up due to oversized file
     filename = '2018-2022.csv'
     table = Averager(filename)
     df = table.createDF()
